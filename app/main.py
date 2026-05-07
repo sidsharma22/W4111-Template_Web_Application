@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -15,26 +16,47 @@ if __package__ in (None, ""):
         HarryPotterCollection,
         HarryPotterResource,
     )
+    from app.resources.CustomerResource import Customer, CustomerCollection, CustomerResource
+    from app.resources.OrderResource import Order, OrderCollection, OrderResource
+    from app.resources.OrderDetailsResource import (
+        OrderDetail,
+        OrderDetailCollection,
+        OrderDetailsResource,
+    )
 else:
     from .resources.HarryPotterResource import (
         HarryPotterCharacter,
         HarryPotterCollection,
         HarryPotterResource,
     )
+    from .resources.CustomerResource import Customer, CustomerCollection, CustomerResource
+    from .resources.OrderResource import Order, OrderCollection, OrderResource
+    from .resources.OrderDetailsResource import (
+        OrderDetail,
+        OrderDetailCollection,
+        OrderDetailsResource,
+    )
 
 
 def _get_app_name() -> str:
-    # Keep settings minimal in this starter; use environment variables when needed.
     return os.getenv("APP_NAME", "Starter FastAPI App")
 
 
 app = FastAPI(title=_get_app_name(), version="0.1.0")
+
 harry_potter_resource = HarryPotterResource()
+customer_resource = CustomerResource()
+order_resource = OrderResource()
+order_details_resource = OrderDetailsResource()
 
 
 class EchoRequest(BaseModel):
     message: str
 
+
+# ---------------------------------------------------------------------------
+# Core routes
+# ---------------------------------------------------------------------------
 
 @app.get("/", tags=["root"])
 def read_root() -> dict[str, str]:
@@ -50,6 +72,10 @@ def health() -> dict[str, str]:
 def echo(payload: EchoRequest) -> EchoRequest:
     return payload
 
+
+# ---------------------------------------------------------------------------
+# Harry Potter (sample / reference)
+# ---------------------------------------------------------------------------
 
 @app.get("/harry-potter", tags=["harry-potter"])
 def get_harry_potter_characters(
@@ -98,6 +124,177 @@ def delete_harry_potter_character(character_id: str) -> dict[str, int]:
     return {"deleted": deleted}
 
 
+# ---------------------------------------------------------------------------
+# Customers  (Task 5)
+# ---------------------------------------------------------------------------
+
+@app.get("/customers", tags=["customers"])
+def get_customers(
+    customerName: Optional[str] = None,
+    city: Optional[str] = None,
+    country: Optional[str] = None,
+    state: Optional[str] = None,
+) -> CustomerCollection:
+    template: dict = {}
+    if customerName is not None:
+        template["customerName"] = customerName
+    if city is not None:
+        template["city"] = city
+    if country is not None:
+        template["country"] = country
+    if state is not None:
+        template["state"] = state
+    return customer_resource.get(template)
+
+
+@app.post("/customers", tags=["customers"])
+def create_customer(new_data: Customer) -> str:
+    try:
+        return customer_resource.post(new_data)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/customers/{customerNumber}", tags=["customers"])
+def get_customer(customerNumber: int) -> Customer:
+    try:
+        return customer_resource.get_by_id(str(customerNumber))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.put("/customers/{customerNumber}", tags=["customers"])
+def update_customer(customerNumber: int, new_data: Customer) -> dict[str, int]:
+    try:
+        updated = customer_resource.put(str(customerNumber), new_data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if updated == 0:
+        raise HTTPException(status_code=404, detail=f"Customer {customerNumber} not found")
+    return {"updated": updated}
+
+
+@app.delete("/customers/{customerNumber}", tags=["customers"])
+def delete_customer(customerNumber: int) -> dict[str, int]:
+    deleted = customer_resource.delete(str(customerNumber))
+    return {"deleted": deleted}
+
+
+# ---------------------------------------------------------------------------
+# Orders  (Task 5)
+# ---------------------------------------------------------------------------
+
+@app.get("/orders", tags=["orders"])
+def get_orders(
+    status: Optional[str] = None,
+    customerNumber: Optional[int] = None,
+) -> OrderCollection:
+    template: dict = {}
+    if status is not None:
+        template["status"] = status
+    if customerNumber is not None:
+        template["customerNumber"] = customerNumber
+    return order_resource.get(template)
+
+
+@app.post("/orders", tags=["orders"])
+def create_order(new_data: Order) -> str:
+    try:
+        return order_resource.post(new_data)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/orders/{orderNumber}", tags=["orders"])
+def get_order(orderNumber: int) -> Order:
+    try:
+        return order_resource.get_by_id(str(orderNumber))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.put("/orders/{orderNumber}", tags=["orders"])
+def update_order(orderNumber: int, new_data: Order) -> dict[str, int]:
+    try:
+        updated = order_resource.put(str(orderNumber), new_data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if updated == 0:
+        raise HTTPException(status_code=404, detail=f"Order {orderNumber} not found")
+    return {"updated": updated}
+
+
+@app.delete("/orders/{orderNumber}", tags=["orders"])
+def delete_order(orderNumber: int) -> dict[str, int]:
+    deleted = order_resource.delete(str(orderNumber))
+    return {"deleted": deleted}
+
+
+# ---------------------------------------------------------------------------
+# Order Details  (Task 5)
+# Composite PK: (orderNumber, productCode)
+# ---------------------------------------------------------------------------
+
+@app.get("/orderdetails", tags=["orderdetails"])
+def get_order_details(
+    orderNumber: Optional[int] = None,
+    productCode: Optional[str] = None,
+) -> OrderDetailCollection:
+    template: dict = {}
+    if orderNumber is not None:
+        template["orderNumber"] = orderNumber
+    if productCode is not None:
+        template["productCode"] = productCode
+    return order_details_resource.get(template)
+
+
+@app.post("/orderdetails", tags=["orderdetails"])
+def create_order_detail(new_data: OrderDetail) -> str:
+    try:
+        return order_details_resource.post(new_data)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/orders/{orderNumber}/orderdetails", tags=["orderdetails"])
+def get_order_details_by_order(orderNumber: int) -> OrderDetailCollection:
+    return order_details_resource.get({"orderNumber": orderNumber})
+
+
+@app.get("/orders/{orderNumber}/orderdetails/{productCode}", tags=["orderdetails"])
+def get_order_detail(orderNumber: int, productCode: str) -> OrderDetail:
+    try:
+        return order_details_resource.get_by_id((orderNumber, productCode))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.put("/orders/{orderNumber}/orderdetails/{productCode}", tags=["orderdetails"])
+def update_order_detail(
+    orderNumber: int, productCode: str, new_data: OrderDetail
+) -> dict[str, int]:
+    try:
+        updated = order_details_resource.put((orderNumber, productCode), new_data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if updated == 0:
+        raise HTTPException(
+            status_code=404,
+            detail=f"OrderDetail ({orderNumber}, {productCode}) not found",
+        )
+    return {"updated": updated}
+
+
+@app.delete("/orders/{orderNumber}/orderdetails/{productCode}", tags=["orderdetails"])
+def delete_order_detail(orderNumber: int, productCode: str) -> dict[str, int]:
+    deleted = order_details_resource.delete((orderNumber, productCode))
+    return {"deleted": deleted}
+
+
+# ---------------------------------------------------------------------------
+# Entrypoint
+# ---------------------------------------------------------------------------
+
 if __name__ == "__main__":
     import uvicorn
 
@@ -105,4 +302,3 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))
 
     uvicorn.run(app, host=host, port=port)
-
